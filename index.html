@@ -84,7 +84,13 @@ textarea.retro{resize:vertical; width:100%; line-height:1.4}
 
 /* library */
 .tabs{display:flex; flex-wrap:wrap; gap:4px; padding:7px 8px 0}
-#themes{padding-top:5px}
+.libsel{display:grid; grid-template-columns:1fr 1fr; gap:8px; padding:8px 8px 0}
+.ls{display:flex; flex-direction:column; gap:2px; min-width:0; font-family:var(--f-dot); font-size:11px; color:var(--mute)}
+.ls select{width:100%; font-family:var(--f-dot); font-size:13px; padding:4px 6px; cursor:pointer}
+.ls.theme span{color:#b8306f}
+.ls.theme select{border-color:var(--pink); background:#ffe8f3; color:#b8306f}
+.ls select.on{background:var(--ink); color:#fff; border-color:var(--ink)}
+.ls.theme select.on{background:var(--pink); color:#fff; border-color:var(--pink)}
 .tab{font-family:var(--f-dot); font-size:12px; padding:3px 7px; border:2px solid var(--ink); background:var(--win2); cursor:pointer; border-radius:0}
 .tab[aria-selected="true"]{background:var(--ink); color:#fff}
 .tabs .rl{font-family:var(--f-dot); font-size:11px; color:var(--mute); width:3.4em; flex:none; align-self:center}
@@ -265,8 +271,10 @@ textarea.retro{resize:vertical; width:100%; line-height:1.4}
   <div class="leftcol">
   <section class="win lib" aria-label="素材ライブラリ">
     <div class="win-t"><span class="tt">素材ライブラリ</span><span class="dots"><i></i><i></i><i></i></span></div>
-    <div class="tabs" role="tablist" id="tabs"></div>
-    <div class="tabs" role="tablist" id="themes" aria-label="テーマでえらぶ"></div>
+    <div class="libsel">
+      <label class="ls"><span>素材</span><select class="retro" id="selType" aria-label="素材の種類でえらぶ"></select></label>
+      <label class="ls theme"><span>テーマ</span><select class="retro" id="selTheme" aria-label="テーマでえらぶ"></select></label>
+    </div>
     <div class="win-b" id="libbody"></div>
   </section>
   <section class="win fxwin" aria-label="画面エフェクト">
@@ -1629,11 +1637,11 @@ function drawThumb(cv,L){ const c=cv.getContext('2d'); c.setTransform(1,0,0,1,0,
     const T=TYPES[L.type], sz=T.size(L), s=Math.min((cv.width-8)/sz.w,(cv.height-8)/sz.h,4); c.save(); c.translate(cv.width/2,cv.height/2); c.scale(s,s); T.draw(c,L,L.mode==='type'?0.8:0.12,3); c.restore(); }catch(e){} }
 function refreshThumbs(){ for(const th of thumbs) drawThumb(th.cv,th.L); }
 function renderTabs(){
-  const mkRow=(el,label,list,mode,cur)=>{ el.innerHTML=''; const rl=document.createElement('span'); rl.className='rl'; rl.textContent=label; el.appendChild(rl);
-    for(const [k,l] of list){ const b=document.createElement('button'); b.type='button'; b.className='tab'+(mode==='theme'?' theme':''); b.textContent=l; b.setAttribute('role','tab'); b.setAttribute('aria-selected',String(libMode===mode&&k===cur));
-      b.onclick=()=>{ libMode=mode; if(mode==='type') tab=k; else theme=k; saveLibPos(); renderTabs(); renderLib(); $('#libbody').scrollTop=0; }; el.appendChild(b); }
-    const on=el.querySelector('[aria-selected="true"]'); if(on&&on.scrollIntoView) try{ on.scrollIntoView({block:'nearest',inline:'nearest'}); }catch(_){} };
-  mkRow($('#tabs'),'素材',TABS,'type',tab); mkRow($('#themes'),'テーマ',THEMES,'theme',theme); }
+  const fill=(el,list,ph,mode,cur)=>{ el.innerHTML=''; const o0=document.createElement('option'); o0.value=''; o0.textContent=ph; el.appendChild(o0);
+    for(const [k,l] of list){ const o=document.createElement('option'); o.value=k; o.textContent=l; el.appendChild(o); }
+    const on=libMode===mode; el.value=on?cur:''; el.classList.toggle('on',on);
+    el.onchange=()=>{ if(!el.value){ renderTabs(); return; } libMode=mode; if(mode==='type') tab=el.value; else theme=el.value; saveLibPos(); renderTabs(); renderLib(); $('#libbody').scrollTop=0; }; };
+  fill($('#selType'),TABS,'えらぶ…','type',tab); fill($('#selTheme'),THEMES,'えらぶ…','theme',theme); }
 function itemBtn(it){ const b=document.createElement('button'); b.className='item'; b.type='button'; const cv=mkC(64,64); const L=libLayer(it); thumbs.push({cv,L}); drawThumb(cv,L); const sp=document.createElement('span'); sp.textContent=it.l; b.append(cv,sp); b.title=it.l+' を追加';
   b.onclick=()=>{ if(it.type==='pattern'){ placeBg(libLayer(it),it.l); return; } addLayer(libLayer(it)); toast(mqM.matches?`「${it.l}」を追加！ ステージで動かせます（3 調整 で編集）`:`「${it.l}」を追加しました`); }; return b; }
 function bgModeCtl(){ const m=document.createElement('div'); m.className='bgmode'; m.append('背景をタップしたら');
