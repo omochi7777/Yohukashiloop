@@ -539,7 +539,13 @@ Object.assign(SPR,{
   coffee:{l:'コーヒー',c:'#fdf6e3',o:'#2a1a10',rows:["...w..w.....","....w..w....","..kkkkkkkk..",".kwuuuuuuwkk",".kpppppppk.k",".kpppppppkkk",".kppppppqk..","..kppppqk...","kkkkkkkkkkkk",".kxxxxxxxxk."]},
   hotcake:{l:'ホットケーキ',c:'#f0b860',o:'#3a2410',rows:["....kkkkk....","...kyyyyyk...",".kkkkyyykkkk.","kppphpppppqqk","kuuuuuuuuuuuk","kppphpppppqqk","kuuuuuuuuuuuk","kppphpppppqqk","kkkkkkkkkkkkk","kxxxxxxxxxxxk",".kkkkkkkkkkk."]}});
 SPR.rocket.rows=SPR.rocket.rows.map(r=>r+[...r.slice(0,-1)].reverse().join(''));
-const SPR_ORDER=['rocket','ufo','satellite','comet','planet','creamsoda','purin','coffee','hotcake','note2','mic','speaker','hourglass','lantern','acunit','camera','drone','tsubaki','sakurafl','wagasa','gaslamp','heart','star','sparkle','ribbon','cherry','strawberry','ghost','moon','crown','mail','flower','smiley','mushroom','note','cursor','cat','bat','skull','cross','eye','broken','melt','bandaid',...SUMMER_SPR,...HEISEI_SPR];
+Object.assign(SPR,{
+  chest:{l:'宝箱',c:'#a0602a',o:'#2a1408',rows:["..kkkkkkkk..",".kppppppppk.","kpphppppppqk","kyyyyyyyyyyk","kppppkykpppk","kppppkkkpppk","kpphppppppqk","kyyyyyyyyyyk","kpppppppppqk","kkkkkkkkkkkk"]},
+  potion:{l:'ポーション',c:'#ff3b6b',o:'#120a1c',sym:1,rows:["..kk","..kn","..kx",".kxx","kphp","kppp","kphp","kppp","kqqq",".kkk"]},
+  sword:{l:'剣',c:'#8a5a2a',o:'#120a1c',sym:1,rows:["...k","..kx","..kx","..kx","..kx","..kx","..kx","..kx","..kx","kyyy","...p","...p","...p","..ky"]}});
+SPR.potion.rows=SPR.potion.rows.map(r=>r+[...r.slice(0,-1)].reverse().join(''));
+SPR.sword.rows=SPR.sword.rows.map(r=>r+[...r.slice(0,-1)].reverse().join(''));
+const SPR_ORDER=['chest','potion','sword','rocket','ufo','satellite','comet','planet','creamsoda','purin','coffee','hotcake','note2','mic','speaker','hourglass','lantern','acunit','camera','drone','tsubaki','sakurafl','wagasa','gaslamp','heart','star','sparkle','ribbon','cherry','strawberry','ghost','moon','crown','mail','flower','smiley','mushroom','note','cursor','cat','bat','skull','cross','eye','broken','melt','bandaid',...SUMMER_SPR,...HEISEI_SPR];
 const sprCache=new Map();
 function spriteImg(name,c1,c2){
   const S=SPR[name]||SPR.heart, key=name+'|'+c1+'|'+c2; let cv=sprCache.get(key); if(cv) return cv;
@@ -1026,6 +1032,9 @@ function wSize(L){ switch(L.kind){
   case 'chinaframe': case 'taishoframe': case 'eq': case 'ecg': case 'noteframe': return {w:L.w+(L.board?12:0),h:L.h+(L.board?12:0)};
   case 'player': return {w:L.w,h:L.w*0.42};
   case 'countdown': return {w:L.w,h:L.w*0.5};
+  case 'msgwin': return {w:L.w+8,h:L.h+8};
+  case 'choicewin': { const u=Math.max(1,L.px|0), n=String(L.text||'').split(/\s*[|\n]\s*/).filter(Boolean).length, lh=raster('あ','dot').h*u+8*u; return {w:L.w+8,h:n*lh+28*u}; }
+  case 'statuswin': { const u=Math.max(1,L.px|0); return {w:L.w+8,h:raster('あ','dot').h*u*3+42*u}; }
   case 'porthole': return {w:L.w,h:L.h};
   case 'csoda': return {w:L.w*0.8,h:L.w*1.7};
   case 'bigpurin': return {w:L.w*1.02,h:L.w*1.05};
@@ -1044,6 +1053,14 @@ function enLayout(L){ const ch=[...String(L.text||' ')], txt=(L.rtl?ch.slice().r
 function nsLayout(L){ const chars=[...String(L.text||' ')], fk=fkAuto(L.text,'dot'), cell=Math.max(1,L.px|0), pad=5*cell;
   if(L.vert){ const bms=chars.map(ch=>raster(ch===' '?'　':ch,fk)), cw=Math.max(...bms.map(b=>b.w)), th=bms.reduce((a,b)=>a+b.h*cell+2*cell,0)-2*cell; return {vert:true,fk,cell,pad,bms,chars,w:cw*cell+pad*2,h:th+pad*2}; }
   const bm=raster(L.text||' ',fk); return {vert:false,fk,cell,pad,w:bm.w*cell+pad*2,h:bm.h*cell+pad*2}; }
+function wrapText(str,maxPx){ const out=[]; for(const para of str.split('\n')){ let line='', w=0; for(const ch of para){ const cw=raster(ch,'dot').w+1; if(w+cw>maxPx&&line){ out.push(line); line=''; w=0; } line+=ch; w+=cw; } out.push(line); } return out; }
+function gameBox(c,x,y,w,h,st,L,u){ c.save();
+  if(st==='blue'){ const g=c.createLinearGradient(0,y,0,y+h); g.addColorStop(0,mixc(L.c2,'#ffffff',.18)); g.addColorStop(1,shade(L.c2,-.45)); c.fillStyle='#05030a'; rr(c,x-1,y-1,w+2,h+2,6*u); c.fill(); c.fillStyle=g; rr(c,x,y,w,h,6*u); c.fill(); c.strokeStyle=L.c1; c.lineWidth=2*u; rr(c,x+2*u,y+2*u,w-4*u,h-4*u,5*u); c.stroke(); }
+  else if(st==='pastel'){ c.fillStyle=L.c2; rr(c,x,y,w,h,10*u); c.fill(); c.strokeStyle=L.c1; c.lineWidth=3*u; c.stroke(); c.setLineDash([3*u,3*u]); c.lineWidth=1.2*u; rr(c,x+5*u,y+5*u,w-10*u,h-10*u,7*u); c.stroke(); c.setLineDash([]); const hi=spriteImg('heart',L.c1,'#1a1020'); c.imageSmoothingEnabled=false; for(const [hx,hy] of [[x-4*u,y-4*u],[x+w-hi.width*u+4*u,y-4*u]]) c.drawImage(hi,hx,hy,hi.width*u,hi.height*u); }
+  else if(st==='term'){ c.fillStyle=L.c2; c.fillRect(x,y,w,h); c.strokeStyle=L.c1; c.lineWidth=1.5*u; c.strokeRect(x+1,y+1,w-2,h-2); c.fillStyle=rgba(L.c1,.06); for(let yy=y;yy<y+h;yy+=3*u) c.fillRect(x,yy,w,u); c.fillStyle=L.c1; for(const [cx,cy] of [[x,y],[x+w-4*u,y],[x,y+h-4*u],[x+w-4*u,y+h-4*u]]) c.fillRect(cx,cy,4*u,4*u); }
+  else if(st==='pixel'){ const q=4*u; c.fillStyle=L.c1; c.fillRect(x+q,y,w-2*q,h); c.fillRect(x,y+q,w,h-2*q); c.fillStyle=L.c2; c.fillRect(x+2*q,y+q,w-4*q,h-2*q); c.fillRect(x+q,y+2*q,w-2*q,h-4*q); c.fillStyle=rgba('#ffffff',.25); c.fillRect(x+2*q,y+q,w-4*q,u); }
+  else { c.fillStyle=L.c2; rr(c,x,y,w,h,4*u); c.fill(); c.strokeStyle=L.c1; c.lineWidth=2.5*u; rr(c,x+4*u,y+4*u,w-8*u,h-8*u,3*u); c.stroke(); c.lineWidth=1; c.strokeStyle=rgba(L.c1,.5); rr(c,x+0.5,y+0.5,w-1,h-1,4*u); c.stroke(); }
+  c.restore(); }
 function hub(c,cx,cy,r,a){ c.fillStyle='#f6f2ff'; c.beginPath(); c.arc(cx,cy,r,0,TAU); c.fill(); c.strokeStyle='#1a1020'; c.lineWidth=Math.max(1,r*0.12); c.stroke();
   c.fillStyle='#2b2238'; c.beginPath(); c.arc(cx,cy,r*0.56,0,TAU); c.fill(); c.save(); c.translate(cx,cy); c.rotate(a); c.fillStyle='#f6f2ff';
   for(let i=0;i<6;i++){ c.save(); c.rotate(i*TAU/6); c.fillRect(r*0.28,-r*0.1,r*0.3,r*0.2); c.restore(); } c.fillStyle='#ff5fa8'; c.beginPath(); c.arc(r*0.78,0,Math.max(1,r*0.12),0,TAU); c.fill(); c.restore(); }
@@ -1170,6 +1187,17 @@ const WID={
     const f=k?0.5+0.5*Math.sin(TAU*t*k):0.5, s=W*0.13*(0.55+0.7*f), bx=x+W, by=y+H;
     c.fillStyle='#e6ddcd'; c.beginPath(); c.moveTo(bx-s,by); c.lineTo(bx,by-s); c.lineTo(bx,by); c.closePath(); c.fill();
     c.fillStyle='#f4eee2'; c.beginPath(); c.moveTo(bx-s,by); c.lineTo(bx,by-s); c.lineTo(bx-s*0.9,by-s*0.9); c.closePath(); c.fill(); c.strokeStyle=rgba(dk,.6); c.stroke(); },
+  msgwin(c,L,t){ const u=Math.max(1,L.px|0), W=L.w, H=L.h, nt=L.text2?16*u:0, x=-W/2, y=-H/2+nt/2, k=(L.k|0)||1, st=L.mwstyle||'rpg';
+    gameBox(c,x,y,W,H-nt,st,L,u); if(L.text2){ const bm=raster(L.text2,fkAuto(L.text2,'dot')), tw=bm.w*u+16*u; gameBox(c,x+10*u,y-14*u,tw,bm.h*u+10*u,st,L,u); drawTxt(c,L.text2,fkAuto(L.text2,'dot'),x+18*u,y-9*u,u,L.tc,'left'); }
+    const pad=st==='pixel'?14*u:12*u, maxW=W-pad*2, lines=wrapText(String(L.text||''),maxW/u), total=lines.reduce((a,l)=>a+[...l].length,0), f=frac(t*k), shown=Math.floor(Math.min(1,f/0.72)*total), lh=raster('あ','dot').h*u+6*u;
+    let left=shown, yy=y+pad+(L.text2?4*u:0); for(const ln of lines){ if(left<=0) break; const ch=[...ln], part=ch.slice(0,left).join(''); left-=ch.length; drawTxt(c,part,'dot',x+pad,yy,u,L.tc,'left'); yy+=lh; if(yy>y+H-nt-pad) break; }
+    if(shown>=total&&frac(t*k*4)<.6){ const cx=x+W-pad-4*u, cy=y+H-nt-pad-4*u+Math.sin(TAU*t*k*4)*1.5*u; c.fillStyle=L.tc; c.beginPath(); c.moveTo(cx-5*u,cy-4*u); c.lineTo(cx+5*u,cy-4*u); c.lineTo(cx,cy+3*u); c.closePath(); c.fill(); } },
+  choicewin(c,L,t){ const u=Math.max(1,L.px|0), opts=String(L.text||'').split(/\s*[|\n]\s*/).filter(Boolean), st=L.mwstyle||'rpg', lh=raster('あ','dot').h*u+8*u, W=L.w, H=opts.length*lh+20*u, x=-W/2, y=-H/2, k=(L.k|0)||1, sel=Math.floor(frac(t*k)*Math.max(1,opts.length));
+    gameBox(c,x,y,W,H,st,L,u); opts.forEach((o,i)=>{ const yy=y+10*u+i*lh+4*u; if(i===sel){ if(st==='pastel'||st==='term'){ c.fillStyle=rgba(L.c1,.25); c.fillRect(x+6*u,yy-3*u,W-12*u,lh-2*u); } if(frac(t*k*opts.length*2)<.75){ c.fillStyle=L.tc; c.beginPath(); c.moveTo(x+10*u,yy+2*u); c.lineTo(x+10*u,yy+12*u); c.lineTo(x+17*u,yy+7*u); c.closePath(); c.fill(); } } drawTxt(c,o,fkAuto(o,'dot'),x+24*u,yy,u,L.tc,'left'); }); },
+  statuswin(c,L,t){ const u=Math.max(1,L.px|0), W=L.w, st=L.mwstyle||'rpg', lh=raster('あ','dot').h*u, H=lh*3+34*u, x=-W/2, y=-H/2, k=(L.k|0)||1, mx=Math.max(1,L.num|0), hp=Math.max(1,Math.round(mx*(0.25+0.75*(0.5+0.5*Math.cos(TAU*t*k))))), low=hp/mx<0.35;
+    gameBox(c,x,y,W,H,st,L,u); drawTxt(c,L.text,fkAuto(L.text,'dot'),x+12*u,y+10*u,u,L.tc,'left'); if(L.text2) drawTxt(c,L.text2,fkAuto(L.text2,'dot'),x+W-12*u,y+10*u,u,L.tc,'right');
+    const bar=(yy,lab,v,m,col,blink)=>{ drawTxt(c,lab,'p2p',x+12*u,yy+2*u,u,L.tc,'left'); const bx=x+40*u, bw=W-52*u-46*u, bh=8*u; c.fillStyle=rgba(L.tc,.2); c.fillRect(bx,yy+2*u,bw,bh); if(!(blink&&frac(t*k*8)<.4)){ c.fillStyle=col; c.fillRect(bx,yy+2*u,bw*v/m,bh); } drawTxt(c,`${v}/${m}`,'p2p',x+W-12*u,yy+2*u,u,L.tc,'right'); };
+    bar(y+16*u+lh,'HP',hp,mx,low?'#ff3b4f':L.c3,low); bar(y+24*u+lh*2,'MP',Math.round(mx*0.6),Math.round(mx*0.6),'#5f9bff',false); },
   countdown(c,L,t){ const W=L.w, H=W*0.5, x=-W/2, y=-H/2, k=(L.k|0)||1, f=frac(t*k), n=Math.max(1,L.num|0), cur=n-Math.floor(f*(n+2)), dk='#05030a';
     c.fillStyle=dk; rr(c,x,y,W,H,6); c.fill(); c.strokeStyle=rgba(L.c1,.6); c.lineWidth=2; c.stroke();
     drawTxt(c,L.text,fkAuto(L.text,'p2p'),x+10,y+8,Math.max(1,Math.round(W/240)),L.c1,'left');
@@ -1628,6 +1656,18 @@ LIB.led.push(itm('led','宇宙交信中…',{text:'宇宙交信中…',mode:'typ
   itm('led','純喫茶',{text:'純喫茶',mode:'static',cell:5,shape:'pixel',cmode:'grad',c1:'#fdf6e3',c2:'#f0b860',panel:false,outline:true,oc:'#5a1a10',halo:false}),
   itm('led','クリームソーダ 450円',{text:'☆ クリームソーダ 450円 ☆ モーニングやってます ☆ 珈琲おかわり自由 ☆',mode:'scroll',cell:3,cols:64,shape:'round',cmode:'mono',c1:'#ffcf7a',panel:true,pc:'#2a160a',halo:true}));
 LIB.sprite.push(itm('sprite','飛ぶロケット',{sprite:'rocket',c1:'#f4f0ff',c2:'#120a1c',px:3,motion:'orbit',mk:1,mamp:60,rot:30}),itm('sprite','ただようUFO',{sprite:'ufo',c1:'#b8bccc',c2:'#120a1c',px:3,count:3,motion:'driftx',mk:1}));
+LIB.widget.push(
+  itm('widget','メッセージ（RPG）',{kind:'msgwin',mwstyle:'rpg',text:'まよなかの　ホームページに\nようこそ！　キリばんを　ふんだら\nけいじばんに　かきこんでね。',text2:'',w:320,h:96,px:1,c1:'#ffffff',c2:'#05030a',tc:'#ffffff',k:1}),
+  itm('widget','メッセージ（名前つき）',{kind:'msgwin',mwstyle:'blue',text:'こんや　0じに　あの　チャットで　まってるね。',text2:'ゆめこ',w:320,h:96,px:1,c1:'#ffffff',c2:'#2a3a9a',tc:'#ffffff',k:1}),
+  itm('widget','メッセージ（8bit）',{kind:'msgwin',mwstyle:'pixel',text:'セーブ　しますか？',text2:'',w:260,h:64,px:1,c1:'#fdf6e3',c2:'#1a1020',tc:'#fdf6e3',k:1}),
+  itm('widget','メッセージ（ゆめかわ）',{kind:'msgwin',mwstyle:'pastel',text:'きょうも　いちにち\nおつかれさま☆',text2:'',w:260,h:80,px:1,c1:'#ff5fa8',c2:'#fff0f7',tc:'#7a2a5a',k:1}),
+  itm('widget','メッセージ（ターミナル）',{kind:'msgwin',mwstyle:'term',text:'> CONNECTING...\n> ACCESS GRANTED\n> ようこそ、電脳空間へ',text2:'',w:300,h:96,px:1,c1:'#3dff8b',c2:'#03100a',tc:'#3dff8b',k:1}),
+  itm('widget','選択肢ウィンドウ',{kind:'choicewin',mwstyle:'rpg',text:'はい|いいえ',w:120,px:1,c1:'#ffffff',c2:'#05030a',tc:'#ffffff',k:1}),
+  itm('widget','コマンドウィンドウ',{kind:'choicewin',mwstyle:'blue',text:'たたかう|まほう|どうぐ|にげる',w:140,px:1,c1:'#ffffff',c2:'#2a3a9a',tc:'#ffffff',k:1}),
+  itm('widget','ステータスウィンドウ',{kind:'statuswin',mwstyle:'rpg',text:'ゆめこ',text2:'LV 7',num:99,w:220,px:1,c1:'#ffffff',c2:'#05030a',c3:'#3dff8b',tc:'#ffffff',k:1}));
+LIB.led.push(itm('led','PRESS START',{text:'PRESS START',font:'p2p',mode:'blink',cell:3,shape:'pixel',cmode:'mono',c1:'#ffffff',panel:false,outline:true,oc:'#05030a',halo:false,k:2}),
+  itm('led','GAME OVER',{text:'GAME OVER',font:'p2p',mode:'static',cell:4,shape:'pixel',cmode:'grad',c1:'#ff5f6b',c2:'#a3121f',panel:false,outline:true,oc:'#05030a',halo:false}),
+  itm('led','LEVEL UP!',{text:'LEVEL UP!',font:'p2p',mode:'wave',cell:3,shape:'pixel',cmode:'rainbow',panel:false,outline:true,oc:'#05030a',halo:false,k:2}));
 LIB.spin.push(itm('spin','ホログラムリング',{kind:'gyro',c1:'#2ee6ff',c2:'#ff2e88',size:62,tilt:18,k:1,glow:6}));
 LIB.widget.push(
   itm('widget','ネオン看板「電脳酒場」',{kind:'neonsign',text:'電脳酒場',vert:true,board:true,px:2,c1:'#2ee6ff',c2:'#0a0716',k:1,glow:6}),
@@ -1644,7 +1684,7 @@ LIB.led.push(
 LIB.sprite.push(itm('sprite','揺れる提灯',{sprite:'lantern',c1:'#ff3b3b',c2:'#5a0a0a',px:4,motion:'sway',mk:2,mamp:16}),itm('sprite','飛ぶドローン',{sprite:'drone',c1:'#3a3150',c2:'#05030a',px:3,count:4,motion:'driftx',mk:1}));
 LIB.pattern.push(itm('pattern','放課後の夕焼け',{kind:'yuyake',c1:'#2b2a6b',c2:'#b45a92',c3:'#ff9a5a',size:30,k:1}));
 const TABS=[['spin','回転'],['led','ドット文字'],['sprite','ドット絵'],['widget','パーツ'],['pattern','背景'],['image','画像']];
-const THEMES=[['pop','ゆめかわ・ポップ'],['yami','病み・退廃'],['cyber','サイバー'],['chuka','中華ネオン'],['taisho','大正ロマン'],['music','音楽'],['space','宇宙'],['kissa','純喫茶'],['hp','HP・ガラケー'],['emo','エモ・夕暮れ'],['summer','夏休み'],['heisei','平成レトロ'],['gal','ギャル・デコ']];
+const THEMES=[['pop','ゆめかわ・ポップ'],['yami','病み・退廃'],['cyber','サイバー'],['chuka','中華ネオン'],['taisho','大正ロマン'],['music','音楽'],['space','宇宙'],['kissa','純喫茶'],['game','レトロゲーム'],['hp','HP・ガラケー'],['emo','エモ・夕暮れ'],['summer','夏休み'],['heisei','平成レトロ'],['gal','ギャル・デコ']];
 const TAGS={'雷紋ネオン':'chuka','回紋ネオン':'chuka cyber','雲雷紋ネオン':'chuka','中華ネオン枠':'chuka','ネオン看板「福」':'chuka','ネオン看板「飯店」':'chuka','矢絣':'taisho','麻の葉':'taisho','青海波':'taisho','桜吹雪':'taisho pop emo','ステンドグラス':'taisho','大正ロマン枠':'taisho','ホーロー看板「カフェー」':'taisho','ホーロー看板（縦）':'taisho','懐中時計':'taisho emo','大正浪漫':'taisho','ハイカラ':'taisho','浪漫喫茶':'taisho','椿':'taisho','舞う椿':'taisho','桜の花':'taisho pop','蛇の目傘':'taisho','ガス灯':'taisho emo','摩天楼の夜景':'cyber','ネオン裏路地':'cyber chuka','九龍夜市':'chuka cyber','ホログラムリング':'cyber','ネオン看板「電脳酒場」':'cyber chuka','ネオン看板「龍」':'chuka','ネオン看板「夜市」':'chuka','ネオン看板「OPEN 24H」':'cyber','ネオン看板「NO FUTURE」':'cyber yami','ネオン看板「大吉」':'chuka','サイバーHUD':'cyber',
   '九龍電脳城':'cyber chuka','ACCESS DENIED':'cyber yami','電脳都市 第七区':'cyber','提灯':'chuka','揺れる提灯':'chuka','室外機':'cyber chuka','監視カメラ':'cyber yami','ドローン':'cyber','飛ぶドローン':'cyber','ワイヤー地球儀':'cyber hp','ミラーボール':'pop cyber','キャンディ玉':'pop','3Dハート':'pop yami','3Dスター':'pop','コイン':'pop hp','キューブ':'cyber','ダイヤ':'pop cyber','ドーナツ':'pop','ネオン箱（線）':'cyber',
   '電光掲示板':'hp','点滅ドット文字':'hp pop','虹色ドット文字':'pop','ウェーブ文字':'pop cyber','タイプライター':'yami cyber','液晶ドット文字':'hp heisei','ピクセル英字':'pop','右へ流れる':'cyber',
@@ -1655,7 +1695,7 @@ const TAGS={'雷紋ネオン':'chuka','回紋ネオン':'chuka cyber','雲雷紋
   '放課後の夕焼け':'emo heisei','夏の海':'emo','打ち上げ花火':'emo','風鈴':'emo','くも':'emo','三日月':'pop yami emo','カセットテープ':'emo','のこり あと1日':'emo','日付の写し込み':'emo','日めくりカレンダー':'emo','ヘッドホン':'emo','夏空と入道雲':'emo',
   '(´ω｀)':'hp heisei','(*´▽｀*)':'hp heisei pop','(；ω；)':'hp heisei yami','ヽ(・∀・)ノ':'hp heisei','(>_<)':'hp heisei pop','orz':'hp heisei yami','(´-ω-`)':'hp heisei','ぁ└)ヵゞ⊂ぅ♡':'gal heisei','ょろUく★':'gal heisei','ぉゃすみ☆彡':'gal heisei','ネ申':'gal heisei','ぁぃUτる':'gal heisei','U〃ゃぁね☆':'gal heisei','ﾁｮｰｳｹﾙ':'gal heisei','ﾁｮﾍﾞﾘｸﾞ':'gal heisei','ﾏﾁﾞ!?':'gal heisei','ギャル文字（流れる）':'gal heisei','ギャル文字に変換':'gal heisei',
   'ヒョウ柄':'gal','ホログラム':'gal pop','キラデコ枠':'hp heisei pop gal','キラキラ星フレーム':'hp heisei pop gal','(*´▽｀*)':'hp heisei pop gal','ヽ(・∀・)ノ':'hp heisei gal','キラキラ散らし':'pop gal','虹色ドット文字':'pop gal','ズッ友だょ':'gal','ガラケー本体':'hp gal','NEW!バッジ':'hp pop gal','グラデーション':'pop hp','市松':'pop yami hp','ストライプ':'pop','水玉':'pop','ギンガム':'pop','ドット絵タイル':'pop hp','またたき星':'pop cyber hp','集中線':'pop','ジグザグ':'pop','サイバー地平線':'cyber','電脳レイン':'cyber','ワープ':'cyber','サイケ':'cyber pop','砂嵐':'yami cyber'};
-Object.assign(TAGS,{'星雲':'space','惑星の地平線':'space','わっか惑星':'space pop','月':'space emo','カウントダウン':'space cyber','宇宙船の丸窓':'space','宇宙交信中…':'space cyber','TO THE MOON':'space','ロケット':'space','飛ぶロケット':'space','UFO':'space','ただようUFO':'space','人工衛星':'space cyber','ほうき星':'space pop','わっか惑星':'space pop','またたき星':'pop cyber hp space','ワープ':'cyber space','三日月':'pop yami emo space','ワイヤー地球儀':'cyber hp space','ホログラムリング':'cyber space',
+Object.assign(TAGS,{'メッセージ（RPG）':'game hp','メッセージ（名前つき）':'game','メッセージ（8bit）':'game','メッセージ（ゆめかわ）':'game pop','メッセージ（ターミナル）':'game cyber','選択肢ウィンドウ':'game','コマンドウィンドウ':'game','ステータスウィンドウ':'game','PRESS START':'game','GAME OVER':'game yami','LEVEL UP!':'game pop','宝箱':'game','ポーション':'game','剣':'game','ハート':'pop game','スター':'pop game','コイン':'pop hp game','王冠':'pop game','砂時計カーソル':'hp cyber game','星雲':'space','惑星の地平線':'space','わっか惑星':'space pop','月':'space emo','カウントダウン':'space cyber','宇宙船の丸窓':'space','宇宙交信中…':'space cyber','TO THE MOON':'space','ロケット':'space','飛ぶロケット':'space','UFO':'space','ただようUFO':'space','人工衛星':'space cyber','ほうき星':'space pop','わっか惑星':'space pop','またたき星':'pop cyber hp space','ワープ':'cyber space','三日月':'pop yami emo space','ワイヤー地球儀':'cyber hp space','ホログラムリング':'cyber space',
   '昭和レトロ花柄':'kissa heisei','板張りの壁':'kissa taisho','クリームソーダ':'kissa pop','ブルーソーダ':'kissa pop','ぷるぷるプリン':'kissa pop','置き看板「純喫茶」':'kissa taisho','メニューボード':'kissa','純喫茶':'kissa','クリームソーダ 450円':'kissa','プリン':'kissa pop','コーヒー':'kissa emo','ホットケーキ':'kissa pop','さくらんぼ':'pop kissa','ステンドグラス':'taisho kissa','ギンガム':'pop kissa','ホーロー看板「カフェー」':'taisho kissa','浪漫喫茶':'taisho kissa','ガス灯':'taisho emo kissa','レコード':'music emo kissa','イコライザー（LED）':'music hp','イコライザー（グラデ）':'music cyber','イコライザー（上下対称）':'music cyber','円形スペクトラム':'music cyber','心電図モニター':'music yami cyber','オシロスコープ':'music cyber','音の波形':'music','音符フレーム':'music pop','ミュージックプレイヤー':'music heisei','ネオン看板「ON AIR」':'music cyber','レコード':'music emo','レコード（斜め）':'music emo','のぼる音符':'music pop','NOW PLAYING':'music','BGM ON':'music hp','サウンドウェーブ':'music cyber','連符':'music pop','マイク':'music','音符':'pop music','ヘッドホン':'emo music','カセットテープ':'emo music','カセット':'music','CDプレイヤー':'music','ラジカセ':'music','CD':'music','スピーカー':'hp music','音が出ます注意！':'hp music'});
 const ITEMS=(()=>{ const map=new Map(), out=[];
   const add=(it,extra)=>{ const key=it.type+'|'+it.l; let e=map.get(key); if(!e){ e={...it,tags:new Set()}; map.set(key,e); out.push(e); } (TAGS[it.l]||'').split(' ').filter(Boolean).forEach(t=>e.tags.add(t)); if(extra) e.tags.add(extra); };
@@ -1668,7 +1708,7 @@ const HINTS={spin:'タップでステージに追加（スマホは2本指で拡
 let libMode='type', tab='spin', theme='pop';
 try{ const v=JSON.parse(localStorage.getItem('denno-loop-kobo-v1-lib')||'null'); if(v){ if(TABS.some(t=>t[0]===v.tab)) tab=v.tab; if(THEMES.some(t=>t[0]===v.theme)) theme=v.theme; if(v.mode==='theme'||v.mode==='type') libMode=v.mode; } }catch(_){}
 function saveLibPos(){ try{ localStorage.setItem('denno-loop-kobo-v1-lib',JSON.stringify({mode:libMode,tab,theme})); }catch(_){} }
-const THEME_HINT={space:'星雲、惑星、ロケット、UFO。宇宙船の丸窓を重ねると窓の外の景色になります。',kissa:'クリームソーダ、プリン、ホットケーキ。仕上げに「色あせフィルム」で昭和の写真風に。',music:'イコライザー、心電図、レコード、音符。どれもループに合わせてリズムを刻みます。',taisho:'矢絣、椿、ホーロー看板、懐中時計。画面エフェクトの「セピア」や「色あせフィルム」を足すと古写真風に。',chuka:'夜市、提灯、縦書きのネオン看板。画面エフェクトの「雨」と「ぼんやり発光」を足すと雰囲気が出ます。',gal:'ギャル文字、顔文字、ヒョウ柄、キラキラデコ。ドット文字の「ギャル文字に変換」で好きな文字も変換できます。',pop:'パステル、ハート、キラキラ。かわいい系まとめ。',yami:'ドクロ、割れたハート、エラー表示。退廃的でちょっと病んだ素材。',cyber:'ネオン、ワイヤーフレーム、電脳空間。',hp:'個人ホームページとガラケー時代のパーツ。キリ番、カウンター、相互リンクなど。',emo:'夕焼け、放課後、色あせた思い出。仕上げに「色あせフィルム」がおすすめ。',summer:'夏休みの素材。背景はタップで入れ替わります。',heisei:'カセット、CD、ベル、顔文字。平成の持ち物まとめ。'};
+const THEME_HINT={game:'RPG風のメッセージ、選択肢、ステータス画面。文字は1文字ずつ表示され、終わると▼が点滅します。',space:'星雲、惑星、ロケット、UFO。宇宙船の丸窓を重ねると窓の外の景色になります。',kissa:'クリームソーダ、プリン、ホットケーキ。仕上げに「色あせフィルム」で昭和の写真風に。',music:'イコライザー、心電図、レコード、音符。どれもループに合わせてリズムを刻みます。',taisho:'矢絣、椿、ホーロー看板、懐中時計。画面エフェクトの「セピア」や「色あせフィルム」を足すと古写真風に。',chuka:'夜市、提灯、縦書きのネオン看板。画面エフェクトの「雨」と「ぼんやり発光」を足すと雰囲気が出ます。',gal:'ギャル文字、顔文字、ヒョウ柄、キラキラデコ。ドット文字の「ギャル文字に変換」で好きな文字も変換できます。',pop:'パステル、ハート、キラキラ。かわいい系まとめ。',yami:'ドクロ、割れたハート、エラー表示。退廃的でちょっと病んだ素材。',cyber:'ネオン、ワイヤーフレーム、電脳空間。',hp:'個人ホームページとガラケー時代のパーツ。キリ番、カウンター、相互リンクなど。',emo:'夕焼け、放課後、色あせた思い出。仕上げに「色あせフィルム」がおすすめ。',summer:'夏休みの素材。背景はタップで入れ替わります。',heisei:'カセット、CD、ベル、顔文字。平成の持ち物まとめ。'};
 const thumbs=[];
 function libLayer(it){ const p=Object.assign({},it.p); for(const k of ['w','h']) if(typeof p[k]==='string'){ p[k]=p[k]==='@w8'?Math.round(P.w*0.8):p[k]==='@h'?P.h:P.w; } return mk(it.type,p); }
 function drawThumb(cv,L){ const c=cv.getContext('2d'); c.setTransform(1,0,0,1,0,0); c.clearRect(0,0,cv.width,cv.height); c.imageSmoothingEnabled=false;
@@ -1759,6 +1799,9 @@ const WKEYS={
   datestamp:[['text','日付','text'],['w','文字の高さ'],['c1','色','color']],
   calendar:[['text','月','text'],['num','日','num'],['text2','曜日','text'],['w','大きさ'],['c1','日付の色','color'],['c2','上部の色','color'],['k','めくれる回数']],
   osd:[['text','左上','text'],['text2','左下（日付）','text'],['num','カウンター開始（秒）','num'],['w','幅'],['h','高さ'],['tc','文字の色','color'],['k','点滅の回数']],
+  msgwin:[['mwstyle','ウィンドウの形','mwstyle'],['text','メッセージ','area'],['text2','名前（空でなし）','text'],['w','幅'],['h','高さ'],['px','文字の大きさ'],['c1','枠の色','color'],['c2','中の色','color'],['tc','文字の色','color'],['k','くり返し回数']],
+  choicewin:[['mwstyle','ウィンドウの形','mwstyle'],['text','選択肢（|で区切る）','text'],['w','幅'],['px','文字の大きさ'],['c1','枠の色','color'],['c2','中の色','color'],['tc','文字の色','color'],['k','カーソルが一周する回数']],
+  statuswin:[['mwstyle','ウィンドウの形','mwstyle'],['text','名前','text'],['text2','右上（レベルなど）','text'],['num','最大HP','num'],['w','幅'],['px','文字の大きさ'],['c1','枠の色','color'],['c2','中の色','color'],['c3','HPバーの色','color'],['tc','文字の色','color'],['k','HPが減って回復する回数']],
   countdown:[['text','上の文字','text'],['num','何秒から','num'],['text2','0のあと','text'],['w','大きさ'],['c1','数字の色','color'],['c2','最後の文字の色','color'],['k','くり返し回数']],
   porthole:[['c1','金属の色','color'],['c2','ガラスの色','color'],['w','幅'],['h','高さ'],['k','ランプ点滅']],
   csoda:[['c1','ソーダの色','color'],['c2','さくらんぼの色','color'],['w','大きさ'],['k','泡とゆれの速さ']],
@@ -1784,7 +1827,7 @@ const WKEYS={
   phone:[['text','待受の時刻','text'],['text2','流れる文字','text'],['w','大きさ'],['c1','本体の色','color'],['c2','画面の色','color'],['c3','画面の文字色','color'],['k','流れる回数']],
 };
 const WRANGE={n:[1,64,1],w:[8,900,1],h:[2,600,1],fill:[0,1,.05],k:[-8,8,1],digits:[1,10,1],px:[1,12,1]};
-function widgetDefs(L){ return (WKEYS[L.kind]||[]).map(([k,l,tp])=>{ if(tp==='color'||tp==='text'||tp==='area') return {k,l,t:tp}; if(tp==='num') return {k,l,t:'num'}; if(tp==='icon') return {k,l,t:'select',o:[['','なし'],...SPR_SEL]}; if(tp==='bstyle') return {k,l,t:'select',o:[['bubble','ふきだし'],['round','まる'],['outline','フチ文字'],['none','文字だけ']]}; if(tp==='image') return {k,l,t:'image'}; if(tp==='check') return {k,l,t:'check'}; if(tp==='eqstyle') return {k,l,t:'select',o:[['led','LEDメーター'],['smooth','グラデーション'],['mirror','上下対称'],['circle','円形']]}; if(tp==='wstyle') return {k,l,t:'select',o:[['ecg','心電図'],['sine','オシロスコープ'],['audio','音の波形']]}; const r=WRANGE[k]||[0,100,1]; return {k,l,t:'range',min:r[0],max:r[1],step:r[2]}; }); }
+function widgetDefs(L){ return (WKEYS[L.kind]||[]).map(([k,l,tp])=>{ if(tp==='color'||tp==='text'||tp==='area') return {k,l,t:tp}; if(tp==='num') return {k,l,t:'num'}; if(tp==='icon') return {k,l,t:'select',o:[['','なし'],...SPR_SEL]}; if(tp==='bstyle') return {k,l,t:'select',o:[['bubble','ふきだし'],['round','まる'],['outline','フチ文字'],['none','文字だけ']]}; if(tp==='image') return {k,l,t:'image'}; if(tp==='check') return {k,l,t:'check'}; if(tp==='eqstyle') return {k,l,t:'select',o:[['led','LEDメーター'],['smooth','グラデーション'],['mirror','上下対称'],['circle','円形']]}; if(tp==='mwstyle') return {k,l,t:'select',o:[['rpg','RPG（白い二重枠）'],['blue','青いグラデーション'],['pixel','8bitカクカク'],['pastel','ゆめかわパステル'],['term','ターミナル']]}; if(tp==='wstyle') return {k,l,t:'select',o:[['ecg','心電図'],['sine','オシロスコープ'],['audio','音の波形']]}; const r=WRANGE[k]||[0,100,1]; return {k,l,t:'range',min:r[0],max:r[1],step:r[2]}; }); }
 const COMMON=[
   {sec:'配置'},{k:'x',l:'位置 X',t:'range',min:()=>-Math.round(P.w*0.25),max:()=>Math.round(P.w*1.25),step:1},{k:'y',l:'位置 Y',t:'range',min:()=>-Math.round(P.h*0.25),max:()=>Math.round(P.h*1.25),step:1},
   {k:'scale',l:'拡大',t:'range',min:.1,max:6,step:.05},{k:'rot',l:'角度',t:'range',min:-180,max:180,step:1},
@@ -1962,7 +2005,7 @@ function preset(i){
     A('widget',{name:'宇宙船の丸窓',kind:'porthole',c1:'#8a90a8',c2:'#7ff6ff',w:480,h:480,k:1});
     A('led',{name:'宇宙交信中…',text:'宇宙交信中…',mode:'type',cell:2,shape:'pixel',cmode:'mono',c1:'#7ff6ff',panel:false,outline:true,oc:'#05031a',halo:false,glow:4,x:240,y:452});
     Object.assign(p.fx,{bloom:{on:true,v:.35},vignette:{on:true,v:.3}});
-  } else { p=mkp(360,780,4,20); const A=(t,o)=>p.layers.push(mk(t,o,p));
+  } else if(i===12){ p=mkp(360,780,4,20); const A=(t,o)=>p.layers.push(mk(t,o,p));
     A('pattern',{name:'昭和レトロ花柄',kind:'retroflower',c1:'#fbefd5',c2:'#e8752a',c3:'#7a3a14',size:30,k:1});
     A('widget',{name:'置き看板「純喫茶」',kind:'standsign',text:'純喫茶 夜更',text2:'COFFEE',px:3,c1:'#7a1a1a',c2:'#fbefd5',k:1,x:84,y:230,shadow:5,shadowColor:'#3a1a0a'});
     A('widget',{name:'クリームソーダ',kind:'csoda',c1:'#4fd06a',c2:'#d8203a',w:160,k:1,x:236,y:300});
@@ -1970,10 +2013,19 @@ function preset(i){
     A('sprite',{name:'ホットケーキ',sprite:'hotcake',c1:'#f0b860',c2:'#3a2410',px:4,x:270,y:580,motion:'bob',mk:2,mamp:3});
     A('led',{name:'電光掲示板',text:'☆ クリームソーダ 450円 ☆ モーニングやってます ☆ 珈琲おかわり自由 ☆',mode:'scroll',cell:3,cols:104,shape:'round',cmode:'mono',c1:'#ffcf7a',panel:true,pc:'#2a160a',halo:true,x:180,y:720});
     Object.assign(p.fx,{film:{on:true,v:.4},vignette:{on:true,v:.35}});
+  } else { p=mkp(480,480,4,20); const A=(t,o)=>p.layers.push(mk(t,o,p));
+    A('pattern',{name:'またたき星',kind:'stars',c1:'#0b0a2a',c2:'#ffffff',c3:'#ffd84a',size:40,k:2});
+    A('widget',{name:'ステータスウィンドウ',kind:'statuswin',mwstyle:'rpg',text:'ゆめこ',text2:'LV 7',num:99,w:220,px:1,c1:'#ffffff',c2:'#05030a',c3:'#3dff8b',tc:'#ffffff',k:1,x:124,y:62});
+    A('spin',{name:'3Dスター',kind:'star',c1:'#ffd84a',c2:'#b07a00',size:46,k:1,x:240,y:200,motion:'bob',mk:2,mamp:8,glow:4});
+    A('sprite',{name:'宝箱',sprite:'chest',c1:'#a0602a',c2:'#2a1408',px:4,x:92,y:236,motion:'jump',mk:2,mamp:10});
+    A('sprite',{name:'ポーション',sprite:'potion',c1:'#ff3b6b',c2:'#120a1c',px:4,x:390,y:236,motion:'bob',mk:2,mamp:6,phase:.5});
+    A('widget',{name:'コマンドウィンドウ',kind:'choicewin',mwstyle:'rpg',text:'たたかう|まほう|どうぐ|にげる',w:130,px:1,c1:'#ffffff',c2:'#05030a',tc:'#ffffff',k:1,x:396,y:70});
+    A('widget',{name:'メッセージ',kind:'msgwin',mwstyle:'rpg',text:'まよなかの　ホームページに\nようこそ！　キリばんを　ふんだら\nけいじばんに　かきこんでね。',w:440,h:110,px:1,c1:'#ffffff',c2:'#05030a',tc:'#ffffff',k:1,x:240,y:398});
+    Object.assign(p.fx,{scan:{on:true,v:.3},vignette:{on:true,v:.35}});
   }
   return p;
 }
-const PRESETS=['ゆめかわ電脳','病みかわハート','ガラケー待受','サイバー掲示板','夏休みの終わり','平成ノスタルジー','ネオン裏路地（スマホ待受）','九龍夜市','大正浪漫（スマホ待受）','福を呼ぶネオン','ミッドナイトラジオ','宇宙交信','純喫茶（スマホ待受）'];
+const PRESETS=['ゆめかわ電脳','病みかわハート','ガラケー待受','サイバー掲示板','夏休みの終わり','平成ノスタルジー','ネオン裏路地（スマホ待受）','九龍夜市','大正浪漫（スマホ待受）','福を呼ぶネオン','ミッドナイトラジオ','宇宙交信','純喫茶（スマホ待受）','真夜中のRPG'];
 
 /* ========== stage fit + interaction ========== */
 const ov=$('#ov'), ovX=ov.getContext('2d'), cbox=$('#cbox'), wrap=$('#stagewrap');
