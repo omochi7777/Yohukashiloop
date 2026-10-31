@@ -177,6 +177,8 @@ textarea.retro{resize:vertical; width:100%; line-height:1.4}
 .mbody{padding:14px; display:flex; flex-direction:column; gap:12px; overflow:auto}
 .pbar{height:22px; border:2px solid var(--ink); background:#120a1c; padding:2px}
 .pbar i{display:block; height:100%; width:0; background:repeating-linear-gradient(90deg,var(--pink) 0 10px, transparent 10px 13px)}
+.info p{margin:0; line-height:1.7}
+.info ul{margin:0; padding-left:1.3em; display:flex; flex-direction:column; gap:6px; line-height:1.7}
 .mmsg{font-family:var(--f-dot); font-size:13px; margin:0}
 .prev{background:conic-gradient(#e9e0fb 25%, #fff 0 50%, #e9e0fb 0 75%, #fff 0) 0 0/16px 16px; border:2px solid var(--ink); display:grid; place-items:center; padding:8px; max-height:52vh; overflow:auto}
 .prev img,.prev video{max-width:100%; max-height:48vh; image-rendering:pixelated; display:block}
@@ -283,6 +285,7 @@ textarea.retro{resize:vertical; width:100%; line-height:1.4}
       <button class="btn" id="psave">作品を保存</button>
       <button class="btn" id="pload">開く</button>
       <button class="btn" id="pnew">白紙</button>
+      <button class="btn" id="pinfo">ご利用について</button>
       <input type="file" id="pfile" accept=".json,application/json" hidden>
     </div>
   </header>
@@ -338,6 +341,23 @@ textarea.retro{resize:vertical; width:100%; line-height:1.4}
     <button type="button" data-t="fx"><b>4</b>エフェクト</button>
     <button type="button" data-t="set"><b>5</b>書出/設定</button>
   </nav>
+</div>
+
+<div class="modal" id="infomodal" hidden>
+  <div class="win mwin" role="dialog" aria-modal="true" aria-labelledby="ititle2">
+    <div class="win-t"><span class="tt" id="ititle2">ご利用について</span><span class="dots"><i></i><i></i><i></i></span></div>
+    <div class="mbody info">
+      <p>夜更かしループは、レトロな素材を組み合わせてループ動画・GIF・静止画をつくるツールです。</p>
+      <ul>
+        <li>このツールで作った画像・動画は、個人・商用を問わず自由に使えます。クレジット表記は不要ですが、書いてもらえるとうれしいです。</li>
+        <li>ツール内の素材（ドット絵・背景・パーツなど）を取り出して、素材集として再配布・販売することはご遠慮ください。</li>
+        <li>ご自身でアップロードした画像の権利については、ご自身で確認のうえお使いください。</li>
+      </ul>
+      <p class="note">フォント：DotGothic16 / Press Start 2P / Silkscreen / M PLUS Rounded 1c（いずれも SIL Open Font License 1.1）</p>
+      <p class="note">作業内容はお使いのブラウザの中だけに保存され、外部に送信されることはありません。</p>
+      <div class="mact"><button class="btn hot" id="infoclose">とじる</button></div>
+    </div>
+  </div>
 </div>
 
 <div class="modal" id="modal" hidden>
@@ -2179,6 +2199,9 @@ function pkSwatches(box,list){ box.innerHTML=''; list.forEach(v=>{ const b=docum
 function openPicker(val,onLive,onOk,onNo){ pkBuild(); PK.onLive=onLive; PK.onOk=onOk; PK.onNo=onNo; PK.start=/^#[0-9a-f]{6}$/i.test(val)?val:'#ffffff'; PK.old.style.background=PK.start;
   pkSwatches(PK.el.querySelector('.pkpal:not(.pkrec)'),PK_PAL); pkSwatches(PK.el.querySelector('.pkrec'),pkRecent()); pkFrom(PK.start,false); PK.el.hidden=false; PK.el.querySelector('.pkok').focus(); }
 function pkClose(){ if(PK.el) PK.el.hidden=true; }
+
+/* ========== info ========== */
+{ const im=$('#infomodal'), close=()=>{ im.hidden=true; }; $('#pinfo').onclick=()=>{ im.hidden=false; $('#infoclose').focus(); }; $('#infoclose').onclick=close; im.addEventListener('pointerdown',e=>{ if(e.target===im) close(); }); im.addEventListener('keydown',e=>{ if(e.key==='Escape') close(); }); }
 
 /* ========== toast ========== */
 let toastT=0; function toast(m){ let el=document.querySelector('.toast'); if(!el){ el=document.createElement('div'); el.className='toast'; el.setAttribute('role','status'); document.body.appendChild(el); } el.textContent=m; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{el.hidden=true;},2600); }
