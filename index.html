@@ -1376,6 +1376,81 @@ const WID={
 };
 const WID_LIST=[['window','ウィンドウ'],['dialog','エラーダイアログ'],['kstatus','ガラケー上部バー'],['ksoft','ガラケー下部バー'],['counter','アクセスカウンター'],['badge','NEW!バッジ'],['loading','ローディング'],['construct','工事中バナー'],['banner','88×31バナー'],['rainbow','虹色ライン'],['phone','ガラケー本体'],['cassette','カセットテープ'],['cdplayer','CDプレイヤー'],['radio','ラジカセ'],['datestamp','日付の写し込み'],['calendar','日めくりカレンダー'],['osd','ビデオの画面表示']];
 
+/* ========== animated GIF (decoded into a frame sheet kept outside the undo history) ========== */
+const ASSETS={}, gifImgs=new Map();
+function gifImg(aid){ let im=gifImgs.get(aid); if(!im&&ASSETS[aid]){ im=new Image(); im.onload=()=>{dirty=true; drawOverlay(); refreshThumbs();}; im.src=ASSETS[aid]; gifImgs.set(aid,im); } return im; }
+function usedAssets(p){ const o={}; for(const L of ((p||P).layers||[])) if(L.type==='gif'&&L.aid&&ASSETS[L.aid]) o[L.aid]=ASSETS[L.aid]; return o; }
+function gifTotal(L){ return Math.max(10,(L.delays||[]).reduce((a,b)=>a+b,0)); }
+function gifReps(L){ return Math.max(1,Math.round(P.dur*1000*Math.max(.05,+L.gspd||1)/gifTotal(L))); }
+function gifFrame(L,t){ const d=L.delays||[], n=d.length; if(n<2) return 0; const tot=gifTotal(L), spd=Math.max(.05,+L.gspd||1); t=frac(t);
+  let pos=L.gfit!==false?frac(t*gifReps(L))*tot:(t*P.dur*1000*spd)%tot; pos=(pos+frac(+L.goff||0)*tot)%tot;
+  let acc=0; for(let i=0;i<n;i++){ acc+=d[i]; if(pos<acc) return i; } return n-1; }
+function gifNote(L){ const n=(L.delays||[]).length, s=(gifTotal(L)/1000).toFixed(2);
+  const r=gifReps(L), eff=r*gifTotal(L)/(P.dur*1000), sp=Math.abs(eff-1)>.05?`、元の約${eff.toFixed(1)}倍の速さ`:'';
+  return L.gfit!==false?`元のGIF：${n}コマ・${s}秒 → ${P.dur}秒のループで ${r}回 くり返します（つなぎ目なし${sp}）${eff>1.3?'。ループの長さを伸ばすと元の速さに近づきます':''}`:`元のGIF：${n}コマ・${s}秒。元の速さで流すので、ループのつなぎ目でコマが飛ぶことがあります`; }
+function gifLZW(mcs,data,np){
+  const out=new Uint8Array(np), clear=1<<mcs, eoi=clear+1, pre=new Int16Array(4096), suf=new Uint8Array(4096), stk=new Uint8Array(4097);
+  for(let i=0;i<4096;i++){ pre[i]=-1; suf[i]=i<clear?i:0; }
+  let size=mcs+1, mask=(1<<size)-1, next=eoi+1, old=-1, first=0, bits=0, cur=0, dp=0, op=0;
+  while(op<np){
+    while(bits<size){ if(dp>=data.length) return out; cur|=data[dp++]<<bits; bits+=8; }
+    let code=cur&mask; cur>>>=size; bits-=size;
+    if(code===clear){ size=mcs+1; mask=(1<<size)-1; next=eoi+1; old=-1; continue; }
+    if(code===eoi) break;
+    if(old<0){ if(code>=clear) break; out[op++]=code; old=code; first=code; continue; }
+    const inC=code; let sp=0;
+    if(code>=next){ if(code>next) break; stk[sp++]=first; code=old; }
+    while(code>=clear&&sp<4096){ stk[sp++]=suf[code]; code=pre[code]; if(code<0) break; }
+    if(code<0) break;
+    first=code; stk[sp++]=first;
+    while(sp&&op<np) out[op++]=stk[--sp];
+    if(next<4096){ pre[next]=old; suf[next]=first; next++; if(next>mask&&size<12){ size++; mask=(1<<size)-1; } }
+    old=inC;
+  }
+  return out;
+}
+/* two passes: count frames first (cheap), then decode + composite each frame straight into the sheet */
+function decodeGIF(buf){
+  const b=new Uint8Array(buf); if(b.length<13||String.fromCharCode(b[0],b[1],b[2])!=='GIF') throw new Error('notgif');
+  const W=b[6]|(b[7]<<8), H=b[8]|(b[9]<<8), pf=b[10]; if(!W||!H||W*H>16e6) throw new Error('size');
+  let hdr=13, gct=null; if(pf&0x80){ const n=1<<((pf&7)+1); gct=b.subarray(hdr,hdr+n*3); hdr+=n*3; }
+  const skipSub=p=>{ while(p<b.length){ const s=b[p++]; if(!s) break; p+=s; } return p; };
+  let count=0; for(let p=hdr;p<b.length;){ const t=b[p++]; if(t===0x3B) break;
+    if(t===0x21){ p=skipSub(p+1); continue; }
+    if(t===0x2C){ const f=b[p+8]; p+=9; if(f&0x80) p+=3*(1<<((f&7)+1)); p=skipSub(p+1); count++; continue; } break; }
+  if(count<1) throw new Error('empty');
+  const MAXF=240, k=Math.ceil(count/MAXF), nOut=Math.ceil(count/k);
+  const s=Math.min(1,480/Math.max(W,H),Math.sqrt(2.4e6/(nOut*W*H)));
+  const fw=Math.max(1,Math.round(W*s)), fh=Math.max(1,Math.round(H*s)), cols=Math.max(1,Math.min(nOut,Math.round(Math.sqrt(nOut*fh/fw))||1)), rows=Math.ceil(nOut/cols);
+  const sheet=mkC(cols*fw,rows*fh), sx=sheet.getContext('2d'); sx.imageSmoothingEnabled=s<1; sx.imageSmoothingQuality='high';
+  const fc=mkC(W,H), fx=fc.getContext('2d'), img=fx.createImageData(W,H), px=img.data;
+  const delays=[]; let gce={disp:0,tr:-1,delay:0}, fi=0, outI=0;
+  for(let p=hdr;p<b.length;){ const t=b[p++]; if(t===0x3B) break;
+    if(t===0x21){ const lab=b[p++]; if(lab===0xF9&&b[p]>=4){ const f=b[p+1]; gce={disp:(f>>2)&7,tr:(f&1)?b[p+4]:-1,delay:b[p+2]|(b[p+3]<<8)}; } p=skipSub(p); continue; }
+    if(t!==0x2C) break;
+    const x0=b[p]|(b[p+1]<<8), y0=b[p+2]|(b[p+3]<<8), w=b[p+4]|(b[p+5]<<8), h=b[p+6]|(b[p+7]<<8), f=b[p+8]; p+=9;
+    let ct=gct; if(f&0x80){ const n=1<<((f&7)+1); ct=b.subarray(p,p+n*3); p+=n*3; }
+    const mcs=b[p++], parts=[]; let len=0; while(p<b.length){ const sz=b[p++]; if(!sz) break; parts.push(b.subarray(p,p+sz)); len+=sz; p+=sz; }
+    const data=new Uint8Array(len); let o=0; for(const q of parts){ data.set(q,o); o+=q.length; }
+    const saved=gce.disp===3?px.slice():null;
+    if(ct&&w&&h&&mcs>=1&&mcs<=11){ const idx=gifLZW(mcs,data,w*h), tr=gce.tr, nc=ct.length/3;
+      let rowsOrder; if(f&0x40){ rowsOrder=[]; for(const [st,sp] of [[0,8],[4,8],[2,4],[1,2]]) for(let r=st;r<h;r+=sp) rowsOrder.push(r); }
+      for(let i=0;i<h;i++){ const ry=y0+(rowsOrder?rowsOrder[i]:i); if(ry>=H) continue;
+        for(let j=0;j<w;j++){ const rx=x0+j; if(rx>=W) continue; const ci=idx[i*w+j]; if(ci===tr||ci>=nc) continue; const q=(ry*W+rx)*4; px[q]=ct[ci*3]; px[q+1]=ct[ci*3+1]; px[q+2]=ct[ci*3+2]; px[q+3]=255; } } }
+    const dl=gce.delay<=1?100:gce.delay*10;
+    if(fi%k===0){ fx.putImageData(img,0,0); sx.drawImage(fc,0,0,W,H,(outI%cols)*fw,Math.floor(outI/cols)*fh,fw,fh); delays.push(dl); outI++; } else delays[delays.length-1]+=dl;
+    if(gce.disp===2){ for(let yy=y0;yy<Math.min(H,y0+h);yy++){ const a=(yy*W+x0)*4; px.fill(0,a,a+Math.min(w,W-x0)*4); } }
+    else if(saved) px.set(saved);
+    gce={disp:0,tr:-1,delay:0}; fi++;
+  }
+  if(!outI) throw new Error('empty');
+  let src=sheet.toDataURL('image/png'); if(src.length>2.4e6){ const wp=sheet.toDataURL('image/webp',.9); if(wp.startsWith('data:image/webp')&&wp.length<src.length) src=wp; }
+  return {src,W,H,fw,fh,cols,delays:delays.slice(0,outI),n:outI};
+}
+function addGifLayer(g,fname){ const aid='g'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); ASSETS[aid]=g.src;
+  addLayer(mk('gif',{name:(fname||'').replace(/\.[^.]+$/,'').slice(0,24)||'GIF',aid,fw:g.fw,fh:g.fh,cols:g.cols,delays:g.delays,iw:Math.round(Math.min(P.w*0.6,g.W)),ar:g.H/g.W,smooth:g.W>=160}));
+  toast(`GIFを追加しました（${g.n}コマ）`); }
+
 /* ========== layer types ========== */
 const imgCache=new Map();
 function getImg(src){ let im=imgCache.get(src); if(!im){ im=new Image(); im.onload=()=>{dirty=true; drawOverlay();}; im.src=src; imgCache.set(src,im); } return im; }
@@ -1385,6 +1460,9 @@ const TYPES={
   led:{label:'文字',size:ledSize,draw:ledDraw},
   sprite:{label:'ドット絵',size:L=>{const s=spriteImg(L.sprite,L.c1,L.c2);return{w:s.width*L.px,h:s.height*L.px};},draw:(c,L)=>{ const s=spriteImg(L.sprite,L.c1,L.c2), w=s.width*L.px, h=s.height*L.px; c.imageSmoothingEnabled=false; c.drawImage(s,-w/2,-h/2,w,h); }},
   widget:{label:'パーツ',size:wSize,draw:(c,L,t,fi)=>(WID[L.kind]||WID.window)(c,L,t,fi)},
+  gif:{label:'GIF',size:L=>({w:L.iw,h:L.iw*(L.ar||1)}),draw:(c,L,t)=>{ const w=L.iw, h=L.iw*(L.ar||1), im=gifImg(L.aid);
+    if(!im){ c.save(); c.setLineDash([6,4]); c.lineWidth=2; c.strokeStyle='#ff4f9e'; c.strokeRect(-w/2,-h/2,w,h); c.fillStyle='#ff4f9e'; c.font='bold 16px sans-serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText('GIF?',0,0); c.restore(); return; }
+    if(!im.complete||!im.naturalWidth) return; const i=gifFrame(L,t), cols=L.cols||1; c.imageSmoothingEnabled=!!L.smooth; c.drawImage(im,(i%cols)*L.fw,Math.floor(i/cols)*L.fh,L.fw,L.fh,-w/2,-h/2,w,h); }},
   image:{label:'画像',size:L=>({w:L.iw,h:L.iw*(L.ar||1)}),draw:(c,L)=>{ const im=getImg(L.src); if(!im.complete||!im.naturalWidth) return; c.imageSmoothingEnabled=!!L.smooth; c.drawImage(im,-L.iw/2,-L.iw*(L.ar||1)/2,L.iw,L.iw*(L.ar||1)); }},
 };
 const isObj=L=>L.type!=='pattern'&&!(L.type==='sprite'&&(L.count|0)>1);
@@ -1398,6 +1476,7 @@ const DEF={
   sprite:{sprite:'heart',px:4,c1:'#ff5fa8',c2:'#1a1020',count:1,seed:1},
   widget:{kind:'window',text:'',text2:'',w:240,h:140,c1:'#ff5fa8',c2:'#8b6cff',c3:'#e6dcfa',bc:'#ffffff',tc:'#291d47',fill:1,k:1,num:12345,digits:7,icon:''},
   image:{src:'',iw:200,ar:1,smooth:true},
+  gif:{aid:'',iw:200,ar:1,smooth:true,fw:1,fh:1,cols:1,delays:[100],gfit:true,gspd:1,goff:0},
 };
 function mk(type,props,proj){ proj=proj||P; const b={id:nid(),type,name:'',visible:true,opacity:1,blend:'source-over',pixel:1,glow:0,shadow:0,shadowColor:'#2a1240'};
   if(type!=='pattern') Object.assign(b,{x:Math.round(proj.w/2),y:Math.round(proj.h/2),scale:1,rot:0,motion:'none',mk:1,mamp:12,phase:0});
@@ -1454,7 +1533,7 @@ function drawObj(c,L,t,fi,x,y,sm,ph){
   c.save(); c.translate(x,y); c.rotate(r); c.scale(s*sx,s); T.draw(c,L,tt,fi); c.restore();
 }
 function drawContent(c,L,t,fi,W,H){
-  c.imageSmoothingEnabled=L.type==='image'?!!L.smooth:false;
+  c.imageSmoothingEnabled=(L.type==='image'||L.type==='gif')?!!L.smooth:false;
   const T=TYPES[L.type]; if(!T) return;
   if(T.full){ c.save(); T.draw(c,L,t,fi,W,H); c.restore(); return; }
   if(L.type==='sprite'&&(L.count|0)>1){ const r=rng((L.seed|0)*7919+13); for(let i=0;i<(L.count|0);i++){ const px=r()*W, py=r()*H, sm=0.55+r()*0.8, ph=r(); drawObj(c,L,t,fi,px,py,sm,ph); } return; }
@@ -1683,7 +1762,7 @@ LIB.led.push(
   itm('led','電脳都市 第七区',{text:'◆ 電脳都市 第七区 ◆ 夜間外出注意 ◆ 違法改造禁止 ◆',mode:'scroll',cell:3,cols:72,shape:'round',cmode:'mono',c1:'#2ee6ff',panel:true,pc:'#03070d',halo:true}));
 LIB.sprite.push(itm('sprite','揺れる提灯',{sprite:'lantern',c1:'#ff3b3b',c2:'#5a0a0a',px:4,motion:'sway',mk:2,mamp:16}),itm('sprite','飛ぶドローン',{sprite:'drone',c1:'#3a3150',c2:'#05030a',px:3,count:4,motion:'driftx',mk:1}));
 LIB.pattern.push(itm('pattern','放課後の夕焼け',{kind:'yuyake',c1:'#2b2a6b',c2:'#b45a92',c3:'#ff9a5a',size:30,k:1}));
-const TABS=[['spin','回転'],['led','ドット文字'],['sprite','ドット絵'],['widget','パーツ'],['pattern','背景'],['image','画像']];
+const TABS=[['spin','回転'],['led','ドット文字'],['sprite','ドット絵'],['widget','パーツ'],['pattern','背景'],['image','画像・GIF']];
 const THEMES=[['pop','ゆめかわ・ポップ'],['yami','病み・退廃'],['cyber','サイバー'],['chuka','中華ネオン'],['taisho','大正ロマン'],['music','音楽'],['space','宇宙'],['kissa','純喫茶'],['game','レトロゲーム'],['hp','HP・ガラケー'],['emo','エモ・夕暮れ'],['summer','夏休み'],['heisei','平成レトロ'],['gal','ギャル・デコ']];
 const TAGS={'雷紋ネオン':'chuka','回紋ネオン':'chuka cyber','雲雷紋ネオン':'chuka','中華ネオン枠':'chuka','ネオン看板「福」':'chuka','ネオン看板「飯店」':'chuka','矢絣':'taisho','麻の葉':'taisho','青海波':'taisho','桜吹雪':'taisho pop emo','ステンドグラス':'taisho','大正ロマン枠':'taisho','ホーロー看板「カフェー」':'taisho','ホーロー看板（縦）':'taisho','懐中時計':'taisho emo','大正浪漫':'taisho','ハイカラ':'taisho','浪漫喫茶':'taisho','椿':'taisho','舞う椿':'taisho','桜の花':'taisho pop','蛇の目傘':'taisho','ガス灯':'taisho emo','摩天楼の夜景':'cyber','ネオン裏路地':'cyber chuka','九龍夜市':'chuka cyber','ホログラムリング':'cyber','ネオン看板「電脳酒場」':'cyber chuka','ネオン看板「龍」':'chuka','ネオン看板「夜市」':'chuka','ネオン看板「OPEN 24H」':'cyber','ネオン看板「NO FUTURE」':'cyber yami','ネオン看板「大吉」':'chuka','サイバーHUD':'cyber',
   '九龍電脳城':'cyber chuka','ACCESS DENIED':'cyber yami','電脳都市 第七区':'cyber','提灯':'chuka','揺れる提灯':'chuka','室外機':'cyber chuka','監視カメラ':'cyber yami','ドローン':'cyber','飛ぶドローン':'cyber','ワイヤー地球儀':'cyber hp','ミラーボール':'pop cyber','キャンディ玉':'pop','3Dハート':'pop yami','3Dスター':'pop','コイン':'pop hp','キューブ':'cyber','ダイヤ':'pop cyber','ドーナツ':'pop','ネオン箱（線）':'cyber',
@@ -1704,7 +1783,7 @@ const ITEMS=(()=>{ const map=new Map(), out=[];
   out.forEach(e=>{ if(!e.tags.size) e.tags.add('pop'); }); return out; })();
 const HINTS={spin:'タップでステージに追加（スマホは2本指で拡大・回転）。「回転数」は1ループの間に何周するか。',led:'流れる・点滅・ウェーブなど。文字は「調整」で変更できます。',sprite:'色は自由に変えられます。「ばらまき数」を増やすと画面いっぱいに散らばります。',
   widget:'昔のホームページ、ガラケー、平成グッズなどのパーツ。カセットのリールやCDはループに合わせて回ります。',
-  pattern:'タップすると今の背景と入れ替わり、いちばん奥に置かれます。ひまわり畑を夏空に重ねるときなどは「上に重ねる」にしてからタップ。',image:'手持ちの画像を素材として置けます（ドット化・ネオン発光も使えます）。'};
+  pattern:'タップすると今の背景と入れ替わり、いちばん奥に置かれます。ひまわり畑を夏空に重ねるときなどは「上に重ねる」にしてからタップ。',image:'手持ちの画像を素材として置けます。アニメGIFは動いたまま読み込めて、ループの長さに合わせて再生されます（ドット化・ネオン発光も使えます）。'};
 let libMode='type', tab='spin', theme='pop';
 try{ const v=JSON.parse(localStorage.getItem('denno-loop-kobo-v1-lib')||'null'); if(v){ if(TABS.some(t=>t[0]===v.tab)) tab=v.tab; if(THEMES.some(t=>t[0]===v.theme)) theme=v.theme; if(v.mode==='theme'||v.mode==='type') libMode=v.mode; } }catch(_){}
 function saveLibPos(){ try{ localStorage.setItem('denno-loop-kobo-v1-lib',JSON.stringify({mode:libMode,tab,theme})); }catch(_){} }
@@ -1729,7 +1808,7 @@ function bgModeCtl(){ const m=document.createElement('div'); m.className='bgmode
 function renderLib(){
   const body=$('#libbody'); body.innerHTML=''; thumbs.length=0;
   const h=document.createElement('p'); h.className='hint'; h.textContent=libMode==='theme'?(THEME_HINT[theme]||''):(HINTS[tab]||''); body.appendChild(h);
-  if(libMode==='type'&&tab==='image'){ const d=document.createElement('div'); d.className='drop'; d.innerHTML='<span>画像をここにドロップ<br>またはステージに直接ドロップ</span>'; const b=document.createElement('button'); b.className='btn'; b.textContent='画像を選ぶ'; const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.hidden=true;
+  if(libMode==='type'&&tab==='image'){ const d=document.createElement('div'); d.className='drop'; d.innerHTML='<span>画像・アニメGIFをここにドロップ<br>またはステージに直接ドロップ</span>'; const b=document.createElement('button'); b.className='btn hot'; b.textContent='画像・GIFを選ぶ'; const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*,.gif'; inp.hidden=true;
     b.onclick=()=>inp.click(); inp.onchange=()=>{ if(inp.files[0]) loadImageFile(inp.files[0]); inp.value=''; }; d.append(b,inp);
     d.ondragover=e=>{e.preventDefault();}; d.ondrop=e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) loadImageFile(f); }; body.appendChild(d); return; }
   const g=document.createElement('div'); g.className='grid';
@@ -1781,6 +1860,7 @@ const PARAMS={
   sprite:[{k:'sprite',l:'ドット絵',t:'select',o:SPR_SEL},{k:'px',l:'ドットの大きさ',t:'range',min:1,max:20,step:1},{k:'c1',l:'メイン色',t:'color'},{k:'c2',l:'線の色',t:'color'},{k:'count',l:'ばらまき数',t:'range',min:1,max:60,step:1},
     {k:'seed',l:'配置',t:'button',txt:'シャッフル',act:L=>{L.seed=(L.seed|0)+1;},if:L=>(L.count|0)>1}],
   image:[{k:'iw',l:'幅',t:'range',min:8,max:1000,step:1},{k:'smooth',l:'なめらかに表示',t:'check'}],
+  gif:[{k:'iw',l:'幅',t:'range',min:8,max:1000,step:1},{sec:'GIFの再生'},{k:'gfit',l:'ループに合わせる',t:'check'},{k:'gspd',l:'再生の速さ',t:'range',min:.25,max:4,step:.25},{k:'goff',l:'開始位置',t:'range',min:0,max:.95,step:.05},{note:gifNote},{k:'smooth',l:'なめらかに表示',t:'check'}],
 };
 const WKEYS={
   window:[['text','タイトル','text'],['text2','本文','area'],['w','幅'],['h','高さ'],['c1','タイトル左','color'],['c2','タイトル右','color'],['c3','枠の色','color'],['bc','本文の背景','color'],['fill','背景の濃さ'],['tc','文字の色','color'],['k','カーソル点滅']],
@@ -1842,11 +1922,13 @@ function renderInsp(){
   if(!L){ const p=document.createElement('p'); p.className='empty'; p.textContent=mqM.matches?'ステージの素材をタップすると、ここで色・文字・動きを調整できます。ドラッグで移動、2本指でつまむと拡大・回転、長押しでつかむとゴミ箱が出ます。':'ステージ上の素材をタップするか、レイヤーを選ぶと、ここで色・文字・動きを調整できます。'; box.appendChild(p); return; }
   const wrap=document.createElement('div'); wrap.className='ib2';
   const nr=document.createElement('div'); nr.className='row wide'; const nl=document.createElement('label'); nl.textContent='名前'; nl.htmlFor='f_name'; const ni=document.createElement('input'); ni.className='retro nameIn'; ni.id='f_name'; ni.value=L.name||''; ni.oninput=()=>{ L.name=ni.value; renderLayers(); $('#ititle').textContent='プロパティ — '+L.name; }; ni.onchange=()=>commit(); nr.append(nl,ni); wrap.appendChild(nr);
+  const notes=[];
   for(const d of defsFor(L)){
     if(d.sec){ const s=document.createElement('div'); s.className='sec'; s.textContent=d.sec; wrap.appendChild(s); continue; }
+    if(d.note){ const p=document.createElement('p'); p.className='hint'; p.style.padding='0 0 2px'; p.textContent=d.note(L); notes.push({p,f:d.note}); wrap.appendChild(p); continue; }
     if(d.if&&!d.if(L)) continue;
     const row=document.createElement('div'); row.className='row'; const id='f_'+d.k; const lb=document.createElement('label'); lb.textContent=d.l; lb.htmlFor=id; row.appendChild(lb);
-    const upd=()=>{ dirty=true; drawOverlay(); };
+    const upd=()=>{ dirty=true; drawOverlay(); for(const n of notes) n.p.textContent=n.f(L); };
     if(d.t==='range'){ const mn=typeof d.min==='function'?d.min():d.min, mx=typeof d.max==='function'?d.max():d.max; const r=document.createElement('input'); r.type='range'; r.id=id; r.min=mn; r.max=mx; r.step=d.step; r.value=L[d.k]; const o=document.createElement('output'); o.textContent=fmt(L[d.k]);
       r.oninput=()=>{ L[d.k]=+r.value; o.textContent=fmt(L[d.k]); upd(); }; r.onchange=()=>{ commit(); if(defsFor(L).some(q=>q.if)) renderInsp(); }; row.append(r,o); }
     else if(d.t==='select'){ row.classList.add('wide'); const s=document.createElement('select'); s.className='retro'; s.id=id; for(const [v,l] of d.o){ const o=document.createElement('option'); o.value=v; o.textContent=l; s.appendChild(o);} s.value=L[d.k]; s.onchange=()=>{ L[d.k]=s.value; upd(); commit(); renderInsp(); renderLayers(); }; row.appendChild(s); }
@@ -1887,7 +1969,10 @@ function delLayer(id){ const i=P.layers.findIndex(l=>l.id===id); if(i<0) return;
 /* ========== history + storage ========== */
 let hist=[], hi=-1, saveTimer=0; const SKEY='denno-loop-kobo-v1';
 function commit(){ const s=JSON.stringify(P); if(hist[hi]===s){ return; } hist=hist.slice(0,hi+1); hist.push(s); if(hist.length>60) hist.shift(); hi=hist.length-1; updUndo(); clearTimeout(saveTimer); saveTimer=setTimeout(saveLocal,400); }
-function saveLocal(){ try{ localStorage.setItem(SKEY,JSON.stringify(P)); $('#foot').textContent='作業内容はこのブラウザに自動保存されます'; }catch(e){ $('#foot').textContent='自動保存できませんでした（画像が大きすぎるかも）。「作品を保存」で書き出してください'; } }
+let lastAK=null;
+function saveLocal(){ try{ const a=usedAssets(), ak=Object.keys(a).sort().join(',');
+    if(ak!==lastAK){ lastAK=null; if(ak) localStorage.setItem(SKEY+'-assets',JSON.stringify(a)); else localStorage.removeItem(SKEY+'-assets'); lastAK=ak; }
+    localStorage.setItem(SKEY,JSON.stringify(P)); $('#foot').textContent='作業内容はこのブラウザに自動保存されます'; }catch(e){ $('#foot').textContent='自動保存できませんでした（画像が大きすぎるかも）。「作品を保存」で書き出してください'; } }
 function updUndo(){ $('#undo').disabled=$('#mundo').disabled=hi<=0; $('#redo').disabled=$('#mredo').disabled=hi>=hist.length-1; }
 function restore(s){ P=JSON.parse(s); normFX(P); if(sel&&!getL(sel)) sel=null; afterLoad(false); }
 function undo(){ if(hi>0){ hi--; restore(hist[hi]); updUndo(); clearTimeout(saveTimer); saveTimer=setTimeout(saveLocal,400);} }
@@ -2090,7 +2175,11 @@ let wheelT=0; view.addEventListener('wheel',e=>{ const L=getL(sel); if(!L||!isOb
 function syncInspValues(){ const L=getL(sel); if(!L) return; for(const k of ['x','y','scale','rot']){ const el=document.getElementById('f_'+k); if(el){ el.value=L[k]; const o=el.nextElementSibling; if(o&&o.tagName==='OUTPUT') o.textContent=fmt(L[k]); } } }
 wrap.addEventListener('dragover',e=>{ if([...e.dataTransfer.items].some(i=>i.kind==='file')) e.preventDefault(); });
 wrap.addEventListener('drop',e=>{ e.preventDefault(); const f=e.dataTransfer.files[0]; if(f) loadImageFile(f); });
-function loadImageFile(f){ if(!f||!/^image\//.test(f.type)){ toast('画像ファイルを選んでください'); return; } const fr=new FileReader(); fr.onload=()=>{ const im=new Image(); im.onload=()=>{ const m=512, s=Math.min(1,m/Math.max(im.width,im.height)); const cv=mkC(Math.max(1,Math.round(im.width*s)),Math.max(1,Math.round(im.height*s))); cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
+function loadImageFile(f){ if(!f) return; const isGif=f.type==='image/gif'||/\.gif$/i.test(f.name||'');
+  if(isGif){ toast('GIFを読み込み中…'); const fr=new FileReader(); fr.onload=()=>setTimeout(()=>{ let g=null; try{ g=decodeGIF(fr.result); }catch(e){ console.warn(e); }
+      if(g&&g.n>1) addGifLayer(g,f.name); else loadStill(f); },30); fr.onerror=()=>toast('このGIFは読み込めませんでした'); fr.readAsArrayBuffer(f); return; }
+  loadStill(f); }
+function loadStill(f){ if(!f||!/^image\//.test(f.type)){ toast('画像ファイルを選んでください'); return; } const fr=new FileReader(); fr.onload=()=>{ const im=new Image(); im.onload=()=>{ const m=512, s=Math.min(1,m/Math.max(im.width,im.height)); const cv=mkC(Math.max(1,Math.round(im.width*s)),Math.max(1,Math.round(im.height*s))); cv.getContext('2d').drawImage(im,0,0,cv.width,cv.height);
   const src=cv.toDataURL('image/png'); addLayer(mk('image',{name:f.name.replace(/\.[^.]+$/,'').slice(0,24)||'画像',src,iw:Math.round(Math.min(P.w*0.6,cv.width)),ar:cv.height/cv.width})); toast('画像を追加しました'); }; im.onerror=()=>toast('この画像は読み込めませんでした'); im.src=fr.result; }; fr.readAsDataURL(f); }
 
 document.addEventListener('keydown',e=>{ const tg=e.target.tagName; if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT') return; if(!$('#modal').hidden) return;
@@ -2135,9 +2224,9 @@ async function saveBlob(name,data){ if(!dlApi&&!(window.claude&&window.claude.us
   if(!dlApi){ toast('この表示ではファイル保存が使えません。プレビューを長押し（右クリック）して保存してください'); return false; }
   try{ await dlApi.save({filename:name,data}); toast('保存しました'); return true; }
   catch(e){ const c=e&&e.code; if(c==='declined') toast('保存をキャンセルしました'); else if(c==='rate_limited') toast('少し待ってからもう一度お試しください'); else if(c==='too_large') toast('ファイルが大きすぎます。倍率を下げてください'); else toast('この表示では保存できませんでした'); return false; } }
-$('#psave').onclick=()=>saveBlob(`yofukashi-loop-${stamp()}.json`,new Blob([JSON.stringify(P)],{type:'application/json'}));
+$('#psave').onclick=()=>{ const a=usedAssets(), o=Object.keys(a).length?Object.assign({},P,{assets:a}):P; saveBlob(`yofukashi-loop-${stamp()}.json`,new Blob([JSON.stringify(o)],{type:'application/json'})); };
 $('#pload').onclick=()=>$('#pfile').click();
-$('#pfile').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const fr=new FileReader(); fr.onload=()=>{ try{ const p=JSON.parse(fr.result); if(!p||!Array.isArray(p.layers)||!p.w) throw 0; setProject(p,'作品を開きました'); }catch(err){ toast('このファイルは「夜更かしループ」の作品ではないようです'); } }; fr.readAsText(f); e.target.value=''; };
+$('#pfile').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const fr=new FileReader(); fr.onload=()=>{ try{ const p=JSON.parse(fr.result); if(!p||!Array.isArray(p.layers)||!p.w) throw 0; if(p.assets&&typeof p.assets==='object'){ for(const [k,v] of Object.entries(p.assets)) if(typeof v==='string'&&v.startsWith('data:image/')) ASSETS[k]=v; } delete p.assets; setProject(p,'作品を開きました'); }catch(err){ toast('このファイルは「夜更かしループ」の作品ではないようです'); } }; fr.readAsText(f); e.target.value=''; };
 
 /* ========== export ========== */
 const expC=mkC(), expX=expC.getContext('2d',{willReadFrequently:true});
@@ -2259,7 +2348,7 @@ function pkClose(){ if(PK.el) PK.el.hidden=true; }
 let toastT=0; function toast(m){ let el=document.querySelector('.toast'); if(!el){ el=document.createElement('div'); el.className='toast'; el.setAttribute('role','status'); document.body.appendChild(el); } el.textContent=m; el.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>{el.hidden=true;},2600); }
 
 /* ========== boot ========== */
-let saved=null; try{ saved=localStorage.getItem(SKEY); }catch(e){}
+let saved=null; try{ saved=localStorage.getItem(SKEY); const as=JSON.parse(localStorage.getItem(SKEY+'-assets')||'{}'); if(as&&typeof as==='object') Object.assign(ASSETS,as); }catch(e){}
 let start=null; if(saved){ try{ start=JSON.parse(saved); if(!start||!Array.isArray(start.layers)) start=null; }catch(e){ start=null; } }
 P=start||preset(0); normFX(P); for(const L of P.layers){ const m=/^L(\d+)/.exec(L.id||''); if(m) uid=Math.max(uid,+m[1]+1); }
 renderTabs(); renderLib(); afterLoad(true); commit();
